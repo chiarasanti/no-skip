@@ -116,8 +116,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
           if (!userCompletedYesterday) {
             const alreadyRecorded = (missedData || []).some(
-              (miss) =>
-                miss.user_id === user.id && miss.workout_date === yesterday
+              (miss) => miss.user_id === user.id && miss.workout_date === yesterday
             );
 
             if (!alreadyRecorded) {
@@ -132,6 +131,22 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         });
 
         await Promise.all(missedWorkoutPromises);
+      }
+
+      // Auto-acknowledge missed workouts that are older than yesterday
+      const oldMissedWorkouts = (missedData || []).filter(
+        (miss) => miss.workout_date !== yesterday
+      );
+
+      if (oldMissedWorkouts.length > 0) {
+        const acknowledgePromises = oldMissedWorkouts.map((miss) =>
+          supabase
+            .from("missed_workouts")
+            .update({ acknowledged: true })
+            .eq("id", miss.id)
+        );
+
+        await Promise.all(acknowledgePromises);
       }
     } catch (error) {
       console.error("Error fetching workout data:", error);
