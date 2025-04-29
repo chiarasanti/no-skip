@@ -11,7 +11,7 @@ const jersey = Jersey_10({
 });
 
 export const metadata: Metadata = {
-  title: "Pixel Art Workout App",
+  title: "NoSkip - Cherry and Peus' workout tracker",
   description: "A workout challenge app for Cherry and Peus",
   generator: "v0.dev",
   manifest: "/manifest.json",
