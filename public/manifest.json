@@ -1,0 +1,21 @@
+{
+  "name": "No Skip",
+  "short_name": "No Skip",
+  "description": "A web application to help Peus and Cherry stay on track with your workouts",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020003",
+  "theme_color": "#020003",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+} 
