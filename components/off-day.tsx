@@ -5,7 +5,7 @@ import { useWorkout } from "@/lib/workout-context";
 import { UserAvatar } from "@/components/user-avatar";
 import { PixelButton } from "@/components/pixel-button";
 import { PixelInput } from "@/components/pixel-input";
-import { formatDate, textSizes } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 export function OffDay() {
   const {
@@ -28,9 +28,12 @@ export function OffDay() {
     if (!planText.trim() || !currentUser) return;
 
     setIsSubmitting(true);
-    await savePlan(planText);
-    setPlanText("");
-    setIsSubmitting(false);
+    try {
+      await savePlan(planText);
+      setPlanText("");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

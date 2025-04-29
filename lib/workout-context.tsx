@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
   type ReactNode,
 } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
@@ -46,85 +47,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const otherUser =
     users.find((user) => user.name !== currentUser?.name) || null;
 
-  // Fetch workout data
-  const fetchWorkoutData = async () => {
-    if (users.length === 0) return;
-
-    setIsLoading(true);
-    const supabase = getSupabaseBrowserClient();
-    const today = formatDateForDB(todayDate);
-    const yesterday = formatDateForDB(getYesterdayDate());
-
-    // Fetch workout logs for today
-    const { data: logsData, error: logsError } = await supabase
-      .from("workout_logs")
-      .select("*")
-      .in("workout_date", [today, yesterday]);
-
-    if (logsError) {
-      console.error("Error fetching workout logs:", logsError);
-    } else {
-      setWorkoutLogs(logsData || []);
-    }
-
-    // Fetch workout plans
-    const { data: plansData, error: plansError } = await supabase
-      .from("workout_plans")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (plansError) {
-      console.error("Error fetching workout plans:", plansError);
-    } else {
-      setWorkoutPlans(plansData || []);
-    }
-
-    // Fetch missed workouts
-    const { data: missedData, error: missedError } = await supabase
-      .from("missed_workouts")
-      .select("*")
-      .eq("workout_date", yesterday)
-      .eq("acknowledged", false);
-
-    if (missedError) {
-      console.error("Error fetching missed workouts:", missedError);
-    } else {
-      setMissedWorkouts(missedData || []);
-    }
-
-    // Check for missed workouts from yesterday
-    if (isWorkoutDay(getYesterdayDate())) {
-      const yesterdayLogs = (logsData || []).filter(
-        (log) => log.workout_date === yesterday
-      );
-
-      // For each user, check if they missed their workout yesterday
-      for (const user of users) {
-        const userCompletedYesterday = yesterdayLogs.some(
-          (log) => log.user_id === user.id && log.completed
-        );
-
-        if (!userCompletedYesterday) {
-          const alreadyRecorded = (missedData || []).some(
-            (miss) =>
-              miss.user_id === user.id && miss.workout_date === yesterday
-          );
-
-          if (!alreadyRecorded) {
-            // Record missed workout
-            await supabase.from("missed_workouts").insert({
-              user_id: user.id,
-              workout_date: yesterday,
-              acknowledged: false,
-            });
-          }
-        }
-      }
-    }
-
-    setIsLoading(false);
-  };
-
   // Fetch users
   useEffect(() => {
     const fetchUsers = async () => {
@@ -136,20 +58,94 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Sort users by name to ensure consistent order
-      const sortedUsers = data.sort((a, b) => a.name.localeCompare(b.name));
-      setUsers(sortedUsers);
+      setUsers(data.sort((a, b) => a.name.localeCompare(b.name)));
     };
 
     fetchUsers();
   }, []);
+
+  // Fetch workout data
+  const fetchWorkoutData = useCallback(async () => {
+    if (users.length === 0) return;
+
+    setIsLoading(true);
+    const supabase = getSupabaseBrowserClient();
+    const today = formatDateForDB(todayDate);
+    const yesterday = formatDateForDB(getYesterdayDate());
+
+    try {
+      // Fetch all data in parallel
+      const [
+        { data: logsData, error: logsError },
+        { data: plansData, error: plansError },
+        { data: missedData, error: missedError },
+      ] = await Promise.all([
+        supabase
+          .from("workout_logs")
+          .select("*")
+          .in("workout_date", [today, yesterday]),
+        supabase
+          .from("workout_plans")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("missed_workouts")
+          .select("*")
+          .eq("workout_date", yesterday)
+          .eq("acknowledged", false),
+      ]);
+
+      if (logsError) throw logsError;
+      if (plansError) throw plansError;
+      if (missedError) throw missedError;
+
+      setWorkoutLogs(logsData || []);
+      setWorkoutPlans(plansData || []);
+      setMissedWorkouts(missedData || []);
+
+      // Check for missed workouts from yesterday
+      if (isWorkoutDay(getYesterdayDate())) {
+        const yesterdayLogs = (logsData || []).filter(
+          (log) => log.workout_date === yesterday
+        );
+
+        const missedWorkoutPromises = users.map(async (user) => {
+          const userCompletedYesterday = yesterdayLogs.some(
+            (log) => log.user_id === user.id && log.completed
+          );
+
+          if (!userCompletedYesterday) {
+            const alreadyRecorded = (missedData || []).some(
+              (miss) =>
+                miss.user_id === user.id && miss.workout_date === yesterday
+            );
+
+            if (!alreadyRecorded) {
+              return supabase.from("missed_workouts").insert({
+                user_id: user.id,
+                workout_date: yesterday,
+                acknowledged: false,
+              });
+            }
+          }
+          return null;
+        });
+
+        await Promise.all(missedWorkoutPromises);
+      }
+    } catch (error) {
+      console.error("Error fetching workout data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [users, todayDate]);
 
   // Set up interval to check every minute
   useEffect(() => {
     fetchWorkoutData();
     const interval = setInterval(fetchWorkoutData, 60000);
     return () => clearInterval(interval);
-  }, [users, todayDate]);
+  }, [fetchWorkoutData]);
 
   const switchUser = () => {
     setCurrentUserIndex((prev) => (prev === 0 ? 1 : 0));
@@ -161,56 +157,53 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     const supabase = getSupabaseBrowserClient();
     const today = formatDateForDB(todayDate);
 
-    // Check if there's already a log for today
-    const existingLogIndex = workoutLogs.findIndex(
-      (log) => log.user_id === currentUser.id && log.workout_date === today
-    );
+    try {
+      const existingLogIndex = workoutLogs.findIndex(
+        (log) => log.user_id === currentUser.id && log.workout_date === today
+      );
 
-    if (existingLogIndex >= 0) {
-      // Update existing log
-      const { error } = await supabase
-        .from("workout_logs")
-        .update({
-          completed: true,
-          completed_at: new Date().toISOString(),
-          workout_description: description,
-        })
-        .eq("id", workoutLogs[existingLogIndex].id);
+      if (existingLogIndex >= 0) {
+        const { error } = await supabase
+          .from("workout_logs")
+          .update({
+            completed: true,
+            completed_at: new Date().toISOString(),
+            workout_description: description,
+          })
+          .eq("id", workoutLogs[existingLogIndex].id);
 
-      if (error) {
-        console.error("Error updating workout log:", error);
-        return;
+        if (error) throw error;
+
+        setWorkoutLogs((prev) =>
+          prev.map((log, index) =>
+            index === existingLogIndex
+              ? {
+                  ...log,
+                  completed: true,
+                  completed_at: new Date().toISOString(),
+                  workout_description: description,
+                }
+              : log
+          )
+        );
+      } else {
+        const { data, error } = await supabase
+          .from("workout_logs")
+          .insert({
+            user_id: currentUser.id,
+            workout_date: today,
+            completed: true,
+            completed_at: new Date().toISOString(),
+            workout_description: description,
+          })
+          .select();
+
+        if (error) throw error;
+
+        setWorkoutLogs((prev) => [...prev, data[0]]);
       }
-
-      // Update local state
-      const updatedLogs = [...workoutLogs];
-      updatedLogs[existingLogIndex] = {
-        ...updatedLogs[existingLogIndex],
-        completed: true,
-        completed_at: new Date().toISOString(),
-        workout_description: description,
-      };
-      setWorkoutLogs(updatedLogs);
-    } else {
-      // Create new log
-      const { data, error } = await supabase
-        .from("workout_logs")
-        .insert({
-          user_id: currentUser.id,
-          workout_date: today,
-          completed: true,
-          completed_at: new Date().toISOString(),
-          workout_description: description,
-        })
-        .select();
-
-      if (error) {
-        console.error("Error creating workout log:", error);
-        return;
-      }
-
-      // Update local state
-      setWorkoutLogs([...workoutLogs, data[0]]);
+    } catch (error) {
+      console.error("Error marking workout as done:", error);
     }
   };
 
@@ -219,136 +212,114 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
     const supabase = getSupabaseBrowserClient();
 
-    // Find the next workout day
-    const nextWorkoutDate = new Date(todayDate);
-    do {
-      nextWorkoutDate.setDate(nextWorkoutDate.getDate() + 1);
-    } while (!isWorkoutDay(nextWorkoutDate));
+    try {
+      // Find the next workout day
+      const nextWorkoutDate = new Date(todayDate);
+      do {
+        nextWorkoutDate.setDate(nextWorkoutDate.getDate() + 1);
+      } while (!isWorkoutDay(nextWorkoutDate));
 
-    const nextWorkoutDateStr = formatDateForDB(nextWorkoutDate);
+      const nextWorkoutDateStr = formatDateForDB(nextWorkoutDate);
 
-    // Check if there's already a plan for the next workout day
-    const existingPlanIndex = workoutPlans.findIndex(
-      (plan) =>
-        plan.user_id === currentUser.id && plan.for_date === nextWorkoutDateStr
-    );
+      const existingPlanIndex = workoutPlans.findIndex(
+        (plan) =>
+          plan.user_id === currentUser.id &&
+          plan.for_date === nextWorkoutDateStr
+      );
 
-    if (existingPlanIndex >= 0) {
-      // Update existing plan
-      const { error } = await supabase
-        .from("workout_plans")
-        .update({
-          plan_text: planText,
-          created_at: new Date().toISOString(),
-        })
-        .eq("id", workoutPlans[existingPlanIndex].id);
+      if (existingPlanIndex >= 0) {
+        const { error } = await supabase
+          .from("workout_plans")
+          .update({
+            plan_text: planText,
+            created_at: new Date().toISOString(),
+          })
+          .eq("id", workoutPlans[existingPlanIndex].id);
 
-      if (error) {
-        console.error("Error updating workout plan:", error);
-        return;
+        if (error) throw error;
+
+        setWorkoutPlans((prev) =>
+          prev.map((plan, index) =>
+            index === existingPlanIndex
+              ? {
+                  ...plan,
+                  plan_text: planText,
+                  created_at: new Date().toISOString(),
+                }
+              : plan
+          )
+        );
+      } else {
+        const { data, error } = await supabase
+          .from("workout_plans")
+          .insert({
+            user_id: currentUser.id,
+            for_date: nextWorkoutDateStr,
+            plan_text: planText,
+            created_at: new Date().toISOString(),
+          })
+          .select();
+
+        if (error) throw error;
+
+        setWorkoutPlans((prev) => [...prev, data[0]]);
       }
-
-      // Update local state
-      const updatedPlans = [...workoutPlans];
-      updatedPlans[existingPlanIndex] = {
-        ...updatedPlans[existingPlanIndex],
-        plan_text: planText,
-        created_at: new Date().toISOString(),
-      };
-      setWorkoutPlans(updatedPlans);
-    } else {
-      // Create new plan
-      const { data, error } = await supabase
-        .from("workout_plans")
-        .insert({
-          user_id: currentUser.id,
-          plan_text: planText,
-          for_date: nextWorkoutDateStr,
-        })
-        .select();
-
-      if (error) {
-        console.error("Error creating workout plan:", error);
-        return;
-      }
-
-      // Update local state
-      setWorkoutPlans([...workoutPlans, data[0]]);
+    } catch (error) {
+      console.error("Error saving workout plan:", error);
     }
   };
 
   const hasMissedWorkout = (userId: number): boolean => {
-    return missedWorkouts.some((miss) => miss.user_id === userId);
+    return missedWorkouts.some(
+      (missed) => missed.user_id === userId && !missed.acknowledged
+    );
   };
 
   const hasCompletedWorkout = (userId: number): boolean => {
-    const today = formatDateForDB(todayDate);
     return workoutLogs.some(
       (log) =>
-        log.user_id === userId && log.workout_date === today && log.completed
+        log.user_id === userId &&
+        log.workout_date === formatDateForDB(todayDate) &&
+        log.completed
     );
   };
 
   const hasPlannedWorkout = (userId: number): boolean => {
-    // Find the next workout day
-    const nextWorkoutDate = new Date(todayDate);
-    do {
-      nextWorkoutDate.setDate(nextWorkoutDate.getDate() + 1);
-    } while (!isWorkoutDay(nextWorkoutDate));
-
-    const nextWorkoutDateStr = formatDateForDB(nextWorkoutDate);
-
     return workoutPlans.some(
-      (plan) => plan.user_id === userId && plan.for_date === nextWorkoutDateStr
+      (plan) =>
+        plan.user_id === userId && plan.for_date === formatDateForDB(todayDate)
     );
   };
 
   const getWorkoutPlan = (userId: number): string => {
-    const today = formatDateForDB(todayDate);
-    const todayPlan = workoutPlans.find(
-      (plan) => plan.user_id === userId && plan.for_date === today
+    const plan = workoutPlans.find(
+      (plan) =>
+        plan.user_id === userId && plan.for_date === formatDateForDB(todayDate)
     );
+    return plan?.plan_text || "";
+  };
 
-    if (todayPlan) {
-      return todayPlan.plan_text;
-    }
-
-    // Get the most recent plan
-    const userPlans = workoutPlans.filter((plan) => plan.user_id === userId);
-    if (userPlans.length > 0) {
-      userPlans.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      return userPlans[0].plan_text;
-    }
-
-    return "";
+  const value = {
+    users,
+    currentUser,
+    otherUser,
+    isLoading,
+    isWorkoutDay: isWorkoutToday,
+    todayDate,
+    workoutLogs,
+    workoutPlans,
+    missedWorkouts,
+    switchUser,
+    markWorkoutDone,
+    savePlan,
+    hasMissedWorkout,
+    hasCompletedWorkout,
+    hasPlannedWorkout,
+    getWorkoutPlan,
   };
 
   return (
-    <WorkoutContext.Provider
-      value={{
-        users,
-        currentUser,
-        otherUser,
-        isLoading,
-        isWorkoutDay: isWorkoutToday,
-        todayDate,
-        workoutLogs,
-        workoutPlans,
-        missedWorkouts,
-        switchUser,
-        markWorkoutDone,
-        savePlan,
-        hasMissedWorkout,
-        hasCompletedWorkout,
-        hasPlannedWorkout,
-        getWorkoutPlan,
-      }}
-    >
-      {children}
-    </WorkoutContext.Provider>
+    <WorkoutContext.Provider value={value}>{children}</WorkoutContext.Provider>
   );
 }
 

@@ -13,9 +13,9 @@ export function ShameAlert() {
   if (!missedUser) return null
 
   return (
-    <div className="w-full bg-red-600 p-4 text-center">
+    <div className="w-full bg-red-600 p-2 text-center">
       <p className={`${textSizes.lg} animate-pulse text-white`}>
-        {missedUser.name} didn't workout yesterday. Shame time!!
+        {missedUser.name} didn't workout. Shame time!!
       </p>
     </div>
   )
