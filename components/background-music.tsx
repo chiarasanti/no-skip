@@ -10,7 +10,7 @@ export function BackgroundMusic() {
     // Initialize audio element
     audioRef.current = new Audio("/music/background.mp3");
     audioRef.current.loop = true;
-    audioRef.current.volume = 0.08; // Set a comfortable volume level
+    audioRef.current.volume = 0.05; // Set a comfortable volume level
 
     // Function to start playing
     const startPlaying = () => {
