@@ -3,6 +3,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { WorkoutProvider } from "@/lib/workout-context";
 import { Jersey_10 } from "next/font/google";
+import { BackgroundMusic } from "@/components/background-music";
 
 const jersey = Jersey_10({
   weight: "400",
@@ -89,7 +90,10 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="No Skip" />
       </head>
       <body className={jersey.className}>
-        <WorkoutProvider>{children}</WorkoutProvider>
+        <WorkoutProvider>
+          {children}
+          <BackgroundMusic />
+        </WorkoutProvider>
       </body>
     </html>
   );
