@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWorkout } from "@/lib/workout-context";
 import { UserAvatar } from "@/components/user-avatar";
 import { PixelButton } from "@/components/pixel-button";
 import { formatDate, textSizes } from "@/lib/utils";
+import dynamic from "next/dynamic";
+
+const Confetti = dynamic(() => import("react-confetti"), {
+  ssr: false,
+});
 
 export function WorkoutDay() {
   const {
@@ -16,6 +21,23 @@ export function WorkoutDay() {
   } = useWorkout();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== "undefined" ? window.innerWidth : 0,
+    height: typeof window !== "undefined" ? window.innerHeight : 0,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (!currentUser) return null;
 
@@ -27,12 +49,27 @@ export function WorkoutDay() {
 
     setIsSubmitting(true);
     await markWorkoutDone(workoutPlan);
-    // We'll keep isSubmitting true to keep the button disabled
-    // The page will refresh with the updated state from the context
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3000);
   };
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <div
+        className={`fixed inset-0 transition-opacity duration-500 ${
+          showConfetti ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+      >
+        {showConfetti && (
+          <Confetti
+            width={windowSize.width}
+            height={windowSize.height}
+            recycle={false}
+            numberOfPieces={300}
+            gravity={0.8}
+          />
+        )}
+      </div>
       <div>
         <p className="text-lg text-center text-[#FDF2EC]">
           {formatDate(todayDate)}

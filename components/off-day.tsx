@@ -51,7 +51,7 @@ export function OffDay() {
       </div>
 
       {hasPlanned ? (
-        <p className="text-lg text-center text-white whitespace-pre-wrap mb-8">
+        <p className="text-lg text-center text-[#FDF2EC] whitespace-pre-wrap mb-8">
           {confirmedPlan}
         </p>
       ) : (

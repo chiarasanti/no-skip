@@ -28,11 +28,6 @@ interface WorkoutContextType {
   hasCompletedWorkout: (userId: number) => boolean;
   hasPlannedWorkout: (userId: number) => boolean;
   getWorkoutPlan: (userId: number) => string;
-  // Test mode properties
-  isTestMode: boolean;
-  toggleTestMode: () => void;
-  isTestWorkoutDay: boolean;
-  toggleTestWorkoutDay: () => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
@@ -45,14 +40,90 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlan[]>([]);
   const [missedWorkouts, setMissedWorkouts] = useState<MissedWorkout[]>([]);
-  // Test mode state
-  const [isTestMode, setIsTestMode] = useState(false);
-  const [isTestWorkoutDay, setIsTestWorkoutDay] = useState(true);
 
-  const isWorkoutToday = isTestMode ? isTestWorkoutDay : isWorkoutDay(todayDate);
+  const isWorkoutToday = isWorkoutDay(todayDate);
   const currentUser = users[currentUserIndex] || null;
   const otherUser =
     users.find((user) => user.name !== currentUser?.name) || null;
+
+  // Fetch workout data
+  const fetchWorkoutData = async () => {
+    if (users.length === 0) return;
+
+    setIsLoading(true);
+    const supabase = getSupabaseBrowserClient();
+    const today = formatDateForDB(todayDate);
+    const yesterday = formatDateForDB(getYesterdayDate());
+
+    // Fetch workout logs for today
+    const { data: logsData, error: logsError } = await supabase
+      .from("workout_logs")
+      .select("*")
+      .in("workout_date", [today, yesterday]);
+
+    if (logsError) {
+      console.error("Error fetching workout logs:", logsError);
+    } else {
+      setWorkoutLogs(logsData || []);
+    }
+
+    // Fetch workout plans
+    const { data: plansData, error: plansError } = await supabase
+      .from("workout_plans")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (plansError) {
+      console.error("Error fetching workout plans:", plansError);
+    } else {
+      setWorkoutPlans(plansData || []);
+    }
+
+    // Fetch missed workouts
+    const { data: missedData, error: missedError } = await supabase
+      .from("missed_workouts")
+      .select("*")
+      .eq("workout_date", yesterday)
+      .eq("acknowledged", false);
+
+    if (missedError) {
+      console.error("Error fetching missed workouts:", missedError);
+    } else {
+      setMissedWorkouts(missedData || []);
+    }
+
+    // Check for missed workouts from yesterday
+    if (isWorkoutDay(getYesterdayDate())) {
+      const yesterdayLogs = (logsData || []).filter(
+        (log) => log.workout_date === yesterday
+      );
+
+      // For each user, check if they missed their workout yesterday
+      for (const user of users) {
+        const userCompletedYesterday = yesterdayLogs.some(
+          (log) => log.user_id === user.id && log.completed
+        );
+
+        if (!userCompletedYesterday) {
+          const alreadyRecorded = (missedData || []).some(
+            (miss) =>
+              miss.user_id === user.id && miss.workout_date === yesterday
+          );
+
+          if (!alreadyRecorded) {
+            // Record missed workout
+            await supabase.from("missed_workouts").insert({
+              user_id: user.id,
+              workout_date: yesterday,
+              acknowledged: false,
+            });
+          }
+        }
+      }
+    }
+
+    setIsLoading(false);
+  };
 
   // Fetch users
   useEffect(() => {
@@ -73,89 +144,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     fetchUsers();
   }, []);
 
-  // Fetch workout data
+  // Set up interval to check every minute
   useEffect(() => {
-    const fetchWorkoutData = async () => {
-      if (users.length === 0) return;
-
-      setIsLoading(true);
-      const supabase = getSupabaseBrowserClient();
-      const today = formatDateForDB(todayDate);
-      const yesterday = formatDateForDB(getYesterdayDate());
-
-      // Fetch workout logs for today
-      const { data: logsData, error: logsError } = await supabase
-        .from("workout_logs")
-        .select("*")
-        .in("workout_date", [today, yesterday]);
-
-      if (logsError) {
-        console.error("Error fetching workout logs:", logsError);
-      } else {
-        setWorkoutLogs(logsData || []);
-      }
-
-      // Fetch workout plans
-      const { data: plansData, error: plansError } = await supabase
-        .from("workout_plans")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (plansError) {
-        console.error("Error fetching workout plans:", plansError);
-      } else {
-        setWorkoutPlans(plansData || []);
-      }
-
-      // Fetch missed workouts
-      const { data: missedData, error: missedError } = await supabase
-        .from("missed_workouts")
-        .select("*")
-        .eq("workout_date", yesterday)
-        .eq("acknowledged", false);
-
-      if (missedError) {
-        console.error("Error fetching missed workouts:", missedError);
-      } else {
-        setMissedWorkouts(missedData || []);
-      }
-
-      // Check for missed workouts from yesterday
-      if (isWorkoutDay(getYesterdayDate())) {
-        const yesterdayLogs = (logsData || []).filter(
-          (log) => log.workout_date === yesterday
-        );
-
-        // For each user, check if they missed their workout yesterday
-        for (const user of users) {
-          const userCompletedYesterday = yesterdayLogs.some(
-            (log) => log.user_id === user.id && log.completed
-          );
-
-          if (!userCompletedYesterday) {
-            const alreadyRecorded = (missedData || []).some(
-              (miss) =>
-                miss.user_id === user.id && miss.workout_date === yesterday
-            );
-
-            if (!alreadyRecorded) {
-              // Record missed workout
-              await supabase.from("missed_workouts").insert({
-                user_id: user.id,
-                workout_date: yesterday,
-                acknowledged: false,
-              });
-            }
-          }
-        }
-      }
-
-      setIsLoading(false);
-    };
-
     fetchWorkoutData();
-
-    // Set up interval to check every minute
     const interval = setInterval(fetchWorkoutData, 60000);
     return () => clearInterval(interval);
   }, [users, todayDate]);
@@ -335,14 +326,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     return "";
   };
 
-  const toggleTestMode = () => {
-    setIsTestMode(!isTestMode);
-  };
-
-  const toggleTestWorkoutDay = () => {
-    setIsTestWorkoutDay(!isTestWorkoutDay);
-  };
-
   return (
     <WorkoutContext.Provider
       value={{
@@ -362,11 +345,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         hasCompletedWorkout,
         hasPlannedWorkout,
         getWorkoutPlan,
-        // Test mode values
-        isTestMode,
-        toggleTestMode,
-        isTestWorkoutDay,
-        toggleTestWorkoutDay,
       }}
     >
       {children}
