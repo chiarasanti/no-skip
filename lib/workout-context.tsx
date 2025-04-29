@@ -28,6 +28,11 @@ interface WorkoutContextType {
   hasCompletedWorkout: (userId: number) => boolean;
   hasPlannedWorkout: (userId: number) => boolean;
   getWorkoutPlan: (userId: number) => string;
+  // Test mode properties
+  isTestMode: boolean;
+  toggleTestMode: () => void;
+  isTestWorkoutDay: boolean;
+  toggleTestWorkoutDay: () => void;
 }
 
 const WorkoutContext = createContext<WorkoutContextType | undefined>(undefined);
@@ -40,8 +45,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([]);
   const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlan[]>([]);
   const [missedWorkouts, setMissedWorkouts] = useState<MissedWorkout[]>([]);
+  // Test mode state
+  const [isTestMode, setIsTestMode] = useState(false);
+  const [isTestWorkoutDay, setIsTestWorkoutDay] = useState(true);
 
-  const isWorkoutToday = isWorkoutDay(todayDate);
+  const isWorkoutToday = isTestMode ? isTestWorkoutDay : isWorkoutDay(todayDate);
   const currentUser = users[currentUserIndex] || null;
   const otherUser =
     users.find((user) => user.name !== currentUser?.name) || null;
@@ -327,6 +335,14 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     return "";
   };
 
+  const toggleTestMode = () => {
+    setIsTestMode(!isTestMode);
+  };
+
+  const toggleTestWorkoutDay = () => {
+    setIsTestWorkoutDay(!isTestWorkoutDay);
+  };
+
   return (
     <WorkoutContext.Provider
       value={{
@@ -346,6 +362,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         hasCompletedWorkout,
         hasPlannedWorkout,
         getWorkoutPlan,
+        // Test mode values
+        isTestMode,
+        toggleTestMode,
+        isTestWorkoutDay,
+        toggleTestWorkoutDay,
       }}
     >
       {children}

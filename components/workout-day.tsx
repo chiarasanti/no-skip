@@ -34,10 +34,10 @@ export function WorkoutDay() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
-        <p className="text-lg text-center text-white">
+        <p className="text-lg text-center text-[#FDF2EC]">
           {formatDate(todayDate)}
         </p>
-        <p className="text-5xl text-center text-white">workout day</p>
+        <p className="text-5xl text-center text-[#FDF2EC]">workout day</p>
       </div>
 
       <div className="flex justify-center py-8">
@@ -48,7 +48,7 @@ export function WorkoutDay() {
         />
       </div>
 
-      <p className="text-lg text-center text-white mb-8">
+      <p className="text-lg text-center text-[#FDF2EC] mb-8">
         {hasCompleted
           ? "Workout completed for today, go flex!"
           : workoutPlan || "No workout planned"}
