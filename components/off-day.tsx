@@ -47,7 +47,7 @@ export function OffDay() {
 
       <div className="flex justify-center py-8">
         <UserAvatar
-          src={currentUser.avatar_url}
+          src={currentUser.off_avatar_url}
           alt={currentUser.name}
           size="lg"
         />

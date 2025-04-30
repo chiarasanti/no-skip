@@ -2,6 +2,7 @@ export interface User {
   id: number
   name: string
   avatar_url: string
+  off_avatar_url: string
 }
 
 export interface WorkoutLog {
