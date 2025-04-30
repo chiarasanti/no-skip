@@ -60,7 +60,7 @@ export function OffDay() {
       ) : (
         <PixelInput
           className="h-[60px] w-full resize-none"
-          placeholder="What workout will you do next time?"
+          placeholder="Next time workout?"
           value={planText}
           onChange={(e) => setPlanText(e.target.value)}
           disabled={isSubmitting}
