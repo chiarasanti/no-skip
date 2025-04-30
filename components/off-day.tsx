@@ -1,28 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWorkout } from "@/lib/workout-context";
 import { UserAvatar } from "@/components/user-avatar";
 import { PixelButton } from "@/components/pixel-button";
 import { PixelInput } from "@/components/pixel-input";
-import { formatDate } from "@/lib/utils";
+import { formatDate, isWorkoutDay } from "@/lib/utils";
 
 export function OffDay() {
   const {
     currentUser,
     todayDate,
     savePlan,
-    hasPlannedWorkout,
-    getWorkoutPlan,
+    workoutPlans,
   } = useWorkout();
 
   const [planText, setPlanText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasPlanned, setHasPlanned] = useState(false);
+  const [confirmedPlan, setConfirmedPlan] = useState("");
+
+  // Find the next workout day
+  const nextWorkoutDate = new Date(todayDate);
+  do {
+    nextWorkoutDate.setDate(nextWorkoutDate.getDate() + 1);
+  } while (!isWorkoutDay(nextWorkoutDate));
+
+  const nextWorkoutDateStr = nextWorkoutDate.toISOString().split('T')[0];
+
+  useEffect(() => {
+    if (currentUser) {
+      const hasPlan = workoutPlans.some(
+        (plan) =>
+          plan.user_id === currentUser.id &&
+          plan.for_date === nextWorkoutDateStr
+      );
+      setHasPlanned(hasPlan);
+      if (hasPlan) {
+        const plan = workoutPlans.find(
+          (plan) =>
+            plan.user_id === currentUser.id &&
+            plan.for_date === nextWorkoutDateStr
+        );
+        setConfirmedPlan(plan?.plan_text || "");
+      }
+    }
+  }, [currentUser, workoutPlans, nextWorkoutDateStr]);
 
   if (!currentUser) return null;
-
-  const hasPlanned = hasPlannedWorkout(currentUser.id);
-  const confirmedPlan = hasPlanned ? getWorkoutPlan(currentUser.id) : "";
 
   const handleSavePlan = async () => {
     if (!planText.trim() || !currentUser) return;
@@ -31,6 +56,9 @@ export function OffDay() {
     try {
       await savePlan(planText);
       setPlanText("");
+      // Update the local state after saving
+      setHasPlanned(true);
+      setConfirmedPlan(planText);
     } finally {
       setIsSubmitting(false);
     }

@@ -2,23 +2,34 @@
 
 import { useWorkout } from "@/lib/workout-context";
 import { UserAvatar } from "@/components/user-avatar";
-import { textSizes } from "@/lib/utils";
+import { textSizes, isWorkoutDay as isWorkoutDayFn } from "@/lib/utils";
 
 export function UserSwitch() {
   const {
     otherUser,
     switchUser,
     hasCompletedWorkout,
-    hasPlannedWorkout,
+    workoutPlans,
     isWorkoutDay,
   } = useWorkout();
 
   if (!otherUser) return null;
 
   const hasCompleted = hasCompletedWorkout(otherUser.id);
-  const hasPlanned = hasPlannedWorkout(otherUser.id);
 
-  console.log("Current otherUser:", otherUser.name, otherUser.avatar_url);
+  // Find the next workout day
+  const today = new Date();
+  const nextWorkoutDate = new Date(today);
+  do {
+    nextWorkoutDate.setDate(nextWorkoutDate.getDate() + 1);
+  } while (!isWorkoutDayFn(nextWorkoutDate));
+
+  const nextWorkoutDateStr = nextWorkoutDate.toISOString().split('T')[0];
+  const hasPlanned = workoutPlans.some(
+    (plan) =>
+      plan.user_id === otherUser.id &&
+      plan.for_date === nextWorkoutDateStr
+  );
 
   let statusText = "";
 
